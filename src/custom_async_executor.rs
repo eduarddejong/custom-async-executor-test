@@ -1,7 +1,7 @@
 use futures::task::{self, ArcWake};
 use std::{
     future::Future,
-    pin::Pin,
+    pin::{self, Pin},
     sync::{
         mpsc::{self, SyncSender},
         Arc, Mutex,
@@ -47,7 +47,8 @@ impl SimpleExecutor {
         Self
     }
 
-    pub fn block_on<T>(&mut self, future: Pin<&mut (impl Future<Output = T> + Sync + Send)>) -> T {
+    pub fn block_on<T>(&mut self, mut future: (impl Future<Output = T> + Sync + Send)) -> T {
+        let future = pin::pin!(future);
         Arc::new(SimpleExecutorArcWake {
             future: Mutex::new(future),
             sender: Mutex::new(None),

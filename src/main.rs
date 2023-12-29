@@ -6,9 +6,7 @@ mod custom_async_executor;
 mod custom_async_timer;
 
 fn main() {
-    let async_main_future = async_main();
-    futures::pin_mut!(async_main_future);
-    SimpleExecutor::new().block_on(async_main_future);
+    SimpleExecutor::new().block_on(async_main());
 }
 
 async fn async_main() {
