@@ -1,0 +1,45 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'custom-async-executor-test_2023-12-28'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=custom-async-executor-test_2023-12-28",
+                    "--package=custom-async-executor-test_2023-12-28"
+                ],
+                "filter": {
+                    "name": "custom-async-executor-test_2023-12-28",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'custom-async-executor-test_2023-12-28'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=custom-async-executor-test_2023-12-28",
+                    "--package=custom-async-executor-test_2023-12-28"
+                ],
+                "filter": {
+                    "name": "custom-async-executor-test_2023-12-28",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
