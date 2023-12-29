@@ -1,7 +1,9 @@
 use custom_async_executor::SimpleExecutor;
-use futures_time::time::Duration;
+use std::time::Duration;
 
 mod custom_async_executor;
+
+mod custom_async_timer;
 
 fn main() {
     let async_main_future = async_main();
@@ -13,7 +15,7 @@ async fn async_main() {
     println!("Hello, ");
     for i in (1..=5).rev() {
         println!("{i}...");
-        futures_time::task::sleep(Duration::from_millis(1000)).await;
+        custom_async_timer::sleep(Duration::from_millis(1000)).await;
     }
     println!("world!");
 }
