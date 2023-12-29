@@ -1,33 +1,42 @@
+use futures::task::{self, ArcWake};
 use std::{
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{
+        mpsc::{self, SyncSender},
+        Arc, Mutex,
+    },
     task::Poll,
 };
 
-use futures::task::{self, ArcWake};
-
-struct SimpleExecutorArcWake<'a, T>(Mutex<Pin<&'a mut (dyn Future<Output = T> + Sync + Send)>>);
+struct SimpleExecutorArcWake<'a, T> {
+    future: Mutex<Pin<&'a mut (dyn Future<Output = T> + Sync + Send)>>,
+    sender: Mutex<Option<SyncSender<()>>>,
+}
 
 impl<'a, T> SimpleExecutorArcWake<'a, T> {
-    pub fn poll(self: &Arc<Self>) {
-        let mut poll = Poll::<T>::Pending;
-        while poll.is_pending() {
+    pub fn execute(self: &Arc<Self>) -> T {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender.send(()).unwrap();
+        *self.sender.lock().unwrap() = Some(sender);
+        while receiver.recv().is_ok() {
             let waker = task::waker_ref(self);
             let context = &mut task::Context::from_waker(&waker);
-            poll = self.0.lock().unwrap().as_mut().poll(context);
+            let poll = self.future.lock().unwrap().as_mut().poll(context);
+            if let Poll::Ready(result) = poll {
+                *self.sender.lock().unwrap() = None;
+                return result;
+            }
         }
+        unreachable!("Receiver is closed, poll should be ready");
     }
 }
 
 impl<T> ArcWake for SimpleExecutorArcWake<'_, T> {
-    fn wake(self: Arc<Self>) {
-        todo!("Somehow never being called.")
-        // self.poll();
-    }
-
-    fn wake_by_ref(_arc_self: &Arc<Self>) {
-        unimplemented!("Use wake() instead.");
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        if let Some(sender) = arc_self.sender.lock().unwrap().as_ref() {
+            sender.send(()).expect("Send through channel failed");
+        }
     }
 }
 
@@ -38,8 +47,11 @@ impl SimpleExecutor {
         Self
     }
 
-    pub fn execute<T>(&mut self, future: Pin<&mut (impl Future<Output = T> + Sync + Send)>) {
-        let arc_wake_clone = Arc::new(SimpleExecutorArcWake(Mutex::new(future)));
-        arc_wake_clone.poll();
+    pub fn block_on<T>(&mut self, future: Pin<&mut (impl Future<Output = T> + Sync + Send)>) -> T {
+        Arc::new(SimpleExecutorArcWake {
+            future: Mutex::new(future),
+            sender: Mutex::new(None),
+        })
+        .execute()
     }
 }
