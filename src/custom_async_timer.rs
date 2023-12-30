@@ -1,19 +1,17 @@
 use std::{
     future::Future,
     pin::Pin,
-    sync::{
-        mpsc::{self, Receiver},
-        Mutex,
-    },
     task::Poll,
     thread::{self, JoinHandle},
     time::Duration,
 };
 
+use crossbeam_channel::Receiver;
+
 struct SimpleTimer {
     duration: Duration,
     join_handle: Option<JoinHandle<()>>,
-    poll_receiver: Mutex<Option<Receiver<Poll<()>>>>,
+    poll_receiver: Option<Receiver<Poll<()>>>,
 }
 
 impl Future for SimpleTimer {
@@ -23,8 +21,8 @@ impl Future for SimpleTimer {
         let waker = cx.waker().clone();
         let duration = self.duration;
         if self.join_handle.is_none() {
-            let (sender, receiver) = mpsc::sync_channel(1);
-            *self.poll_receiver.lock().unwrap() = Some(receiver);
+            let (sender, receiver) = crossbeam_channel::bounded(1);
+            self.poll_receiver = Some(receiver);
             self.join_handle = Some(thread::spawn(move || {
                 thread::sleep(duration);
                 sender.send(Poll::Pending).unwrap();
@@ -32,13 +30,7 @@ impl Future for SimpleTimer {
                 sender.send(Poll::Ready(())).unwrap();
             }));
         }
-        self.poll_receiver
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .recv()
-            .unwrap()
+        self.poll_receiver.as_ref().unwrap().recv().unwrap()
     }
 }
 
@@ -46,6 +38,6 @@ pub fn sleep(duration: Duration) -> impl Future<Output = ()> {
     SimpleTimer {
         duration,
         join_handle: None,
-        poll_receiver: Mutex::new(None),
+        poll_receiver: None,
     }
 }

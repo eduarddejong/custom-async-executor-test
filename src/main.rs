@@ -1,5 +1,6 @@
-use custom_async_executor::SimpleExecutor;
 use std::time::Duration;
+
+use custom_async_executor::SimpleExecutor;
 
 mod custom_async_executor;
 

@@ -1,22 +1,21 @@
-use futures::task::{self, ArcWake};
 use std::{
     future::Future,
     pin::{self, Pin},
-    sync::{
-        mpsc::{self, SyncSender},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     task::Poll,
 };
 
+use crossbeam_channel::Sender;
+use futures::task::{self, ArcWake};
+
 struct SimpleExecutorArcWake<'a, T> {
     future: Mutex<Pin<&'a mut (dyn Future<Output = T> + Sync + Send)>>,
-    sender: Mutex<Option<SyncSender<()>>>,
+    sender: Mutex<Option<Sender<()>>>,
 }
 
 impl<'a, T> SimpleExecutorArcWake<'a, T> {
     pub fn execute(self: &Arc<Self>) -> T {
-        let (sender, receiver) = mpsc::sync_channel(1);
+        let (sender, receiver) = crossbeam_channel::bounded(1);
         sender.send(()).unwrap();
         *self.sender.lock().unwrap() = Some(sender);
         while receiver.recv().is_ok() {
@@ -28,7 +27,7 @@ impl<'a, T> SimpleExecutorArcWake<'a, T> {
                 return result;
             }
         }
-        unreachable!("Receiver is closed, poll should be ready");
+        unreachable!("Channel is closed, poll should be ready");
     }
 }
 
