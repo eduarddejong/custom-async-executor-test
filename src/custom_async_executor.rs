@@ -22,7 +22,7 @@ pub fn block_on<T>(mut future: (impl Future<Output = T> + Sync + Send)) -> T {
     let wake = Arc::new(Wake { sender });
     let waker = task::waker_ref(&wake);
     let context = &mut task::Context::from_waker(&waker);
-    wake.sender.send(()).unwrap();
+    wake.sender.send(()).expect("Send through channel failed");
     while receiver.recv().is_ok() {
         let poll = future.as_mut().poll(context);
         if let Poll::Ready(result) = poll {
