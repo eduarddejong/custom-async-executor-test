@@ -12,6 +12,7 @@ struct SimpleTimer {
     duration: Duration,
     join_handle: Option<JoinHandle<()>>,
     poll_receiver: Option<Receiver<Poll<()>>>,
+    poll: Poll<()>,
 }
 
 impl Future for SimpleTimer {
@@ -25,12 +26,17 @@ impl Future for SimpleTimer {
             self.poll_receiver = Some(receiver);
             self.join_handle = Some(thread::spawn(move || {
                 thread::sleep(duration);
-                sender.send(Poll::Pending).unwrap();
-                waker.wake_by_ref();
                 sender.send(Poll::Ready(())).unwrap();
+                waker.wake_by_ref();
             }));
         }
-        self.poll_receiver.as_ref().unwrap().recv().unwrap()
+        self.poll = self
+            .poll_receiver
+            .as_ref()
+            .unwrap()
+            .try_recv()
+            .unwrap_or(self.poll);
+        self.poll
     }
 }
 
@@ -39,5 +45,6 @@ pub fn sleep(duration: Duration) -> impl Future<Output = ()> {
         duration,
         join_handle: None,
         poll_receiver: None,
+        poll: Poll::Pending,
     }
 }
