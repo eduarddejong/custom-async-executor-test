@@ -1,5 +1,5 @@
 [package]
-name = "custom-async-executor-test_2023-12-28"
+name = "custom-async-executor-test"
 version = "0.1.0"
 edition = "2021"
 

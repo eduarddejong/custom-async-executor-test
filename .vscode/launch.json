@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'custom-async-executor-test_2023-12-28'",
+            "name": "Debug executable 'custom-async-executor-test'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=custom-async-executor-test_2023-12-28",
-                    "--package=custom-async-executor-test_2023-12-28"
+                    "--bin=custom-async-executor-test",
+                    "--package=custom-async-executor-test"
                 ],
                 "filter": {
-                    "name": "custom-async-executor-test_2023-12-28",
+                    "name": "custom-async-executor-test",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'custom-async-executor-test_2023-12-28'",
+            "name": "Debug unit tests in executable 'custom-async-executor-test'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=custom-async-executor-test_2023-12-28",
-                    "--package=custom-async-executor-test_2023-12-28"
+                    "--bin=custom-async-executor-test",
+                    "--package=custom-async-executor-test"
                 ],
                 "filter": {
-                    "name": "custom-async-executor-test_2023-12-28",
+                    "name": "custom-async-executor-test",
                     "kind": "bin"
                 }
             },
