@@ -1,7 +1,7 @@
 use std::{
     future::Future,
     pin::Pin,
-    task::Poll,
+    task::{Context, Poll},
     thread::{self, JoinHandle},
     time::Duration,
 };
@@ -18,7 +18,7 @@ struct SimpleTimer {
 impl Future for SimpleTimer {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let waker = cx.waker().clone();
         let duration = self.duration;
         if self.join_handle.is_none() {

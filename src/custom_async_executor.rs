@@ -9,7 +9,7 @@ use crossbeam_channel::{Receiver, Sender};
 use futures::task::{self, ArcWake};
 
 struct Wake {
-    future: Option<Mutex<Pin<Box<dyn Future<Output = ()> + Sync + Send>>>>,
+    future: Option<Mutex<Pin<Box<dyn Future<Output = ()> + Send>>>>,
     poll: Option<Mutex<Poll<()>>>,
     sender: Sender<Arc<Wake>>,
 }
@@ -31,7 +31,7 @@ struct SpawnHandle<T> {
 impl<T> SpawnHandle<T> {
     fn init(&self) {
         let waker = task::waker_ref(&self.wake);
-        let context = &mut task::Context::from_waker(&waker);
+        let context = &mut Context::from_waker(&waker);
         let initial_poll = self
             .wake
             .future
@@ -60,7 +60,7 @@ impl<T> Future for SpawnHandle<T> {
                     .expect("Receive through result channel failed"),
             );
         }
-        cx.waker().clone().wake_by_ref();
+        cx.waker().wake_by_ref();
         Poll::Pending
     }
 }
@@ -76,7 +76,7 @@ impl SimpleExecutor {
         Self { sender, receiver }
     }
 
-    pub fn block_on<T>(&self, mut future: (impl Future<Output = T> + Sync + Send)) -> T {
+    pub fn block_on<T>(&self, mut future: impl Future<Output = T>) -> T {
         let mut future = pin::pin!(future);
         let mut wake = Arc::new(Wake {
             future: None,
@@ -87,13 +87,13 @@ impl SimpleExecutor {
             if let Some(future) = &wake.future {
                 // Spawned future poll
                 let waker = task::waker_ref(&wake);
-                let context = &mut task::Context::from_waker(&waker);
+                let context = &mut Context::from_waker(&waker);
                 *wake.poll.as_ref().unwrap().lock().unwrap() =
                     future.lock().unwrap().as_mut().poll(context);
             } else {
                 // Main future poll
                 let waker = task::waker_ref(&wake);
-                let context = &mut task::Context::from_waker(&waker);
+                let context = &mut Context::from_waker(&waker);
                 let poll = future.as_mut().poll(context);
                 if let Poll::Ready(result) = poll {
                     return result;
@@ -103,12 +103,9 @@ impl SimpleExecutor {
         }
     }
 
-    pub fn spawn<F: Future + Sync + Send + 'static>(
-        &self,
-        future: F,
-    ) -> impl Future<Output = F::Output>
+    pub fn spawn<F: Future + Send + 'static>(&self, future: F) -> impl Future<Output = F::Output>
     where
-        F::Output: std::marker::Send,
+        F::Output: Send,
     {
         let (result_sender, result_receiver) = crossbeam_channel::bounded(1);
         let wake = Arc::new(Wake {
