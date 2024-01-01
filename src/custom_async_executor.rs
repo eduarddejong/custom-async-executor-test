@@ -88,8 +88,10 @@ impl SimpleExecutor {
                 // Spawned future poll
                 let waker = task::waker_ref(&wake);
                 let context = &mut Context::from_waker(&waker);
-                *wake.poll.as_ref().unwrap().lock().unwrap() =
-                    future.lock().unwrap().as_mut().poll(context);
+                let mut poll = wake.poll.as_ref().unwrap().lock().unwrap();
+                if poll.is_pending() {
+                    *poll = future.lock().unwrap().as_mut().poll(context);
+                }
             } else {
                 // Main future poll
                 let waker = task::waker_ref(&wake);
