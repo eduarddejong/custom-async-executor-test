@@ -19,9 +19,9 @@ impl Future for SimpleTimer {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let waker = cx.waker().clone();
-        let duration = self.duration;
         if self.join_handle.is_none() {
+            let waker = cx.waker().clone();
+            let duration = self.duration;
             let (sender, receiver) = crossbeam_channel::bounded(1);
             self.poll_receiver = Some(receiver);
             self.join_handle = Some(thread::spawn(move || {
@@ -30,6 +30,7 @@ impl Future for SimpleTimer {
                 waker.wake_by_ref();
             }));
         }
+
         self.poll = self
             .poll_receiver
             .as_ref()

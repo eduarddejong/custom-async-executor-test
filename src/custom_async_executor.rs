@@ -2,7 +2,7 @@ use std::{
     future::Future,
     pin::{self, Pin},
     sync::{Arc, Mutex},
-    task::{Context, Poll},
+    task::{Context, Poll, Waker},
 };
 
 use crossbeam_channel::{Receiver, Sender};
@@ -11,6 +11,7 @@ use futures::task::{self, ArcWake};
 struct Wake {
     future: Option<Mutex<Pin<Box<dyn Future<Output = ()> + Send>>>>,
     poll: Option<Mutex<Poll<()>>>,
+    join_handle_waker: Option<Mutex<Option<Waker>>>,
     sender: Sender<Arc<Wake>>,
 }
 
@@ -30,9 +31,11 @@ struct SpawnHandle<T> {
 
 impl<T> SpawnHandle<T> {
     fn init(&self) {
+        // Do initial poll on future, so that code before the first await/poll inside it
+        // is executed directly.
         let waker = task::waker_ref(&self.wake);
         let context = &mut Context::from_waker(&waker);
-        let initial_poll = self
+        *self.wake.poll.as_ref().unwrap().lock().unwrap() = self
             .wake
             .future
             .as_ref()
@@ -41,7 +44,7 @@ impl<T> SpawnHandle<T> {
             .unwrap()
             .as_mut()
             .poll(context);
-        *self.wake.poll.as_ref().unwrap().lock().unwrap() = initial_poll;
+
         self.wake
             .sender
             .send(Arc::clone(&self.wake))
@@ -60,7 +63,15 @@ impl<T> Future for SpawnHandle<T> {
                     .expect("Receive through result channel failed"),
             );
         }
-        cx.waker().wake_by_ref();
+
+        *self
+            .wake
+            .join_handle_waker
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap() = Some(cx.waker().clone());
+
         Poll::Pending
     }
 }
@@ -81,8 +92,10 @@ impl SimpleExecutor {
         let mut wake = Arc::new(Wake {
             future: None,
             poll: None,
+            join_handle_waker: None,
             sender: self.sender.clone(),
         });
+
         loop {
             if let Some(future) = &wake.future {
                 // Spawned future poll
@@ -91,6 +104,18 @@ impl SimpleExecutor {
                 let mut poll = wake.poll.as_ref().unwrap().lock().unwrap();
                 if poll.is_pending() {
                     *poll = future.lock().unwrap().as_mut().poll(context);
+                    if poll.is_ready() {
+                        if let Some(waker) = wake
+                            .join_handle_waker
+                            .as_ref()
+                            .unwrap()
+                            .lock()
+                            .unwrap()
+                            .as_ref()
+                        {
+                            waker.wake_by_ref();
+                        }
+                    }
                 }
             } else {
                 // Main future poll
@@ -101,6 +126,7 @@ impl SimpleExecutor {
                     return result;
                 }
             }
+
             wake = self.receiver.recv().expect("Receive from channel failed");
         }
     }
@@ -112,14 +138,16 @@ impl SimpleExecutor {
         let (result_sender, result_receiver) = crossbeam_channel::bounded(1);
         let wake = Arc::new(Wake {
             future: Some(Mutex::new(Box::pin(async move {
-                let var_name = future.await;
+                let result = future.await;
                 result_sender
-                    .send(var_name)
+                    .send(result)
                     .expect("Send through result channel failed");
             }))),
             poll: Some(Mutex::new(Poll::Pending)),
+            join_handle_waker: Some(Mutex::new(None)),
             sender: self.sender.clone(),
         });
+
         let spawn_handle = SpawnHandle {
             wake,
             result_receiver,
