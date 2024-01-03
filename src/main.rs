@@ -13,16 +13,36 @@ fn main() {
 
 async fn async_main(executor: &SimpleExecutor) {
     println!("Hello, ");
-    let async_counter1 = executor.spawn(async_counter((1..=5).rev()));
-    let async_counter2 = executor.spawn(async_counter((6..=10).rev()));
+    let async_counter1 = executor.spawn(async_counter(
+        "A",
+        (1..=9).rev(),
+        Duration::from_millis(100),
+    ));
+    let async_counter2 = executor.spawn(async_counter(
+        "B",
+        (1..=7).rev(),
+        Duration::from_millis(300),
+    ));
+    let async_counter3 = executor.spawn(async_counter(
+        "C",
+        (1..=5).rev(),
+        Duration::from_millis(500),
+    ));
+    let async_counter4 = executor.spawn(async_counter(
+        "D",
+        (1..=3).rev(),
+        Duration::from_millis(900),
+    ));
     async_counter1.await;
     async_counter2.await;
+    async_counter3.await;
+    async_counter4.await;
     println!("world!");
 }
 
-async fn async_counter<T: Display>(range: impl Iterator<Item = T>) {
+async fn async_counter<T: Display>(name: &str, range: impl Iterator<Item = T>, interval: Duration) {
     for i in range {
-        println!("{i}...");
-        custom_async_timer::sleep(Duration::from_millis(500)).await;
+        println!("({name}) {i}...");
+        custom_async_timer::sleep(interval).await;
     }
 }
