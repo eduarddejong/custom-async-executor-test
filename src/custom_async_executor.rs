@@ -8,19 +8,41 @@ use std::{
 use crossbeam_channel::{Receiver, Sender};
 use futures::task::{self, ArcWake};
 
-struct Wake {
-    future: Option<Mutex<Pin<Box<dyn Future<Output = ()> + Send>>>>,
-    poll: Option<Mutex<Poll<()>>>,
-    join_handle_waker: Option<Mutex<Option<Waker>>>,
+enum Wake {
+    Main(MainWake),
+    Spawned(SpawnedWake),
+}
+
+struct MainWake {
     sender: Sender<Arc<Wake>>,
+}
+
+struct SpawnedWake {
+    future: Mutex<Pin<Box<dyn Future<Output = ()> + Send>>>,
+    poll: Mutex<Poll<()>>,
+    join_handle_waker: Mutex<Option<Waker>>,
+    sender: Sender<Arc<Wake>>,
+}
+
+impl Wake {
+    fn spawned_ref(&self) -> &SpawnedWake {
+        match self {
+            Self::Spawned(spawned_wake) => spawned_wake,
+            _ => {
+                panic!("Is not spawned");
+            }
+        }
+    }
 }
 
 impl ArcWake for Wake {
     fn wake_by_ref(arc_self: &Arc<Self>) {
-        arc_self
-            .sender
-            .send(Arc::clone(arc_self))
-            .expect("Send through channel failed");
+        match arc_self.as_ref() {
+            Self::Main(main_wake) => &main_wake.sender,
+            Self::Spawned(spawned_wake) => &spawned_wake.sender,
+        }
+        .send(Arc::clone(arc_self))
+        .expect("Send through channel failed");
     }
 }
 
@@ -31,21 +53,16 @@ struct SpawnHandle<T> {
 
 impl<T> SpawnHandle<T> {
     fn init(&self) {
+        let spawned_wake = self.wake.spawned_ref();
+
         // Do initial poll on future, so that code before the first await/poll inside it
         // is executed directly.
         let waker = task::waker_ref(&self.wake);
         let context = &mut Context::from_waker(&waker);
-        *self.wake.poll.as_ref().unwrap().lock().unwrap() = self
-            .wake
-            .future
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .as_mut()
-            .poll(context);
+        *spawned_wake.poll.lock().unwrap() =
+            spawned_wake.future.lock().unwrap().as_mut().poll(context);
 
-        self.wake
+        spawned_wake
             .sender
             .send(Arc::clone(&self.wake))
             .expect("Send through channel failed");
@@ -56,7 +73,9 @@ impl<T> Future for SpawnHandle<T> {
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        if self.wake.poll.as_ref().unwrap().lock().unwrap().is_ready() {
+        let spawned_wake = self.wake.spawned_ref();
+
+        if spawned_wake.poll.lock().unwrap().is_ready() {
             return Poll::Ready(
                 self.result_receiver
                     .recv()
@@ -64,13 +83,7 @@ impl<T> Future for SpawnHandle<T> {
             );
         }
 
-        *self
-            .wake
-            .join_handle_waker
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap() = Some(cx.waker().clone());
+        *spawned_wake.join_handle_waker.lock().unwrap() = Some(cx.waker().clone());
 
         Poll::Pending
     }
@@ -89,41 +102,36 @@ impl SimpleExecutor {
 
     pub fn block_on<T>(&self, mut future: impl Future<Output = T>) -> T {
         let mut future = pin::pin!(future);
-        let mut wake = Arc::new(Wake {
-            future: None,
-            poll: None,
-            join_handle_waker: None,
+        let mut wake = Arc::new(Wake::Main(MainWake {
             sender: self.sender.clone(),
-        });
+        }));
 
         loop {
-            if let Some(future) = &wake.future {
-                // Spawned future poll
-                let waker = task::waker_ref(&wake);
-                let context = &mut Context::from_waker(&waker);
-                let mut poll = wake.poll.as_ref().unwrap().lock().unwrap();
-                if poll.is_pending() {
-                    *poll = future.lock().unwrap().as_mut().poll(context);
-                    if poll.is_ready() {
-                        if let Some(waker) = wake
-                            .join_handle_waker
-                            .as_ref()
-                            .unwrap()
-                            .lock()
-                            .unwrap()
-                            .as_ref()
-                        {
-                            waker.wake_by_ref();
-                        }
+            match wake.as_ref() {
+                // Main future poll
+                Wake::Main(_) => {
+                    let waker = task::waker_ref(&wake);
+                    let context = &mut Context::from_waker(&waker);
+                    let poll = future.as_mut().poll(context);
+                    if let Poll::Ready(result) = poll {
+                        return result;
                     }
                 }
-            } else {
-                // Main future poll
-                let waker = task::waker_ref(&wake);
-                let context = &mut Context::from_waker(&waker);
-                let poll = future.as_mut().poll(context);
-                if let Poll::Ready(result) = poll {
-                    return result;
+                // Spawned future poll
+                Wake::Spawned(spawned_wake) => {
+                    let waker = task::waker_ref(&wake);
+                    let context = &mut Context::from_waker(&waker);
+                    let mut poll = spawned_wake.poll.lock().unwrap();
+                    if poll.is_pending() {
+                        *poll = spawned_wake.future.lock().unwrap().as_mut().poll(context);
+                        if poll.is_ready() {
+                            if let Some(waker) =
+                                spawned_wake.join_handle_waker.lock().unwrap().as_ref()
+                            {
+                                waker.wake_by_ref();
+                            }
+                        }
+                    }
                 }
             }
 
@@ -136,17 +144,17 @@ impl SimpleExecutor {
         F::Output: Send,
     {
         let (result_sender, result_receiver) = crossbeam_channel::bounded(1);
-        let wake = Arc::new(Wake {
-            future: Some(Mutex::new(Box::pin(async move {
+        let wake = Arc::new(Wake::Spawned(SpawnedWake {
+            future: Mutex::new(Box::pin(async move {
                 let result = future.await;
                 result_sender
                     .send(result)
                     .expect("Send through result channel failed");
-            }))),
-            poll: Some(Mutex::new(Poll::Pending)),
-            join_handle_waker: Some(Mutex::new(None)),
+            })),
+            poll: Mutex::new(Poll::Pending),
+            join_handle_waker: Mutex::new(None),
             sender: self.sender.clone(),
-        });
+        }));
 
         let spawn_handle = SpawnHandle {
             wake,
