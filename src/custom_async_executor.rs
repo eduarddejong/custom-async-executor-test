@@ -33,16 +33,28 @@ impl Wake {
             }
         }
     }
-}
 
-impl ArcWake for Wake {
-    fn wake_by_ref(arc_self: &Arc<Self>) {
-        match arc_self.as_ref() {
+    fn sender(&self) -> &Sender<Arc<Wake>> {
+        match self {
             Self::Main(main_wake) => &main_wake.sender,
             Self::Spawned(spawned_wake) => &spawned_wake.sender,
         }
-        .send(Arc::clone(arc_self))
-        .expect("Send through channel failed");
+    }
+}
+
+impl ArcWake for Wake {
+    fn wake(self: Arc<Self>) {
+        self.sender()
+            .clone()
+            .send(self)
+            .expect("Send through channel failed");
+    }
+
+    fn wake_by_ref(arc_self: &Arc<Self>) {
+        arc_self
+            .sender()
+            .send(Arc::clone(arc_self))
+            .expect("Send through channel failed");
     }
 }
 

@@ -27,7 +27,7 @@ impl Future for SimpleTimer {
             self.join_handle = Some(thread::spawn(move || {
                 thread::sleep(duration);
                 sender.send(Poll::Ready(())).unwrap();
-                waker.wake_by_ref();
+                waker.wake();
             }));
         }
 
