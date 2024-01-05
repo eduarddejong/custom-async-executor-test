@@ -1,10 +1,10 @@
 use std::{fmt::Display, time::Duration};
 
-use custom_async_executor::SimpleExecutor;
+pub use custom_async_executor::SimpleExecutor;
 
-mod custom_async_executor;
+pub mod custom_async_executor;
 
-mod custom_async_timer;
+pub mod custom_async_timer;
 
 fn main() {
     let executor = SimpleExecutor::new();

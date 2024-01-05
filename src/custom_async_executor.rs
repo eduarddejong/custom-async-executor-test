@@ -176,3 +176,9 @@ impl SimpleExecutor {
         spawn_handle
     }
 }
+
+impl Default for SimpleExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
