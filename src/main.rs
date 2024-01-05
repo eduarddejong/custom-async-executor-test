@@ -4,6 +4,8 @@ pub use custom_async_executor::SimpleExecutor;
 
 pub mod custom_async_executor;
 
+pub mod minimalist_custom_async_executor;
+
 pub mod custom_async_timer;
 
 fn main() {
