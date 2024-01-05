@@ -6,6 +6,8 @@ pub mod custom_async_executor;
 
 pub mod minimalist_custom_async_executor;
 
+pub mod custom_async_join;
+
 pub mod custom_async_timer;
 
 fn main() {
