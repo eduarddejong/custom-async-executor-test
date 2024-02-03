@@ -4,18 +4,15 @@ use std::{
     task::{Context, Poll},
 };
 
-struct Join<'a, T1, T2> {
-    future1: Pin<&'a mut (dyn Future<Output = T1>)>,
-    future2: Pin<&'a mut (dyn Future<Output = T2>)>,
+struct Join<'a, T1, T2, F1: Future<Output = T1>, F2: Future<Output = T2>> {
+    future1: Pin<&'a mut F1>,
+    future2: Pin<&'a mut F2>,
     result1: Option<T1>,
     result2: Option<T2>,
 }
 
-impl<'a, T1, T2> Join<'a, T1, T2> {
-    fn new(
-        future1: Pin<&'a mut (dyn Future<Output = T1>)>,
-        future2: Pin<&'a mut (dyn Future<Output = T2>)>,
-    ) -> Self {
+impl<'a, T1, T2, F1: Future<Output = T1>, F2: Future<Output = T2>> Join<'a, T1, T2, F1, F2> {
+    fn new(future1: Pin<&'a mut F1>, future2: Pin<&'a mut F2>) -> Self {
         Self {
             future1,
             future2,
@@ -25,9 +22,9 @@ impl<'a, T1, T2> Join<'a, T1, T2> {
     }
 }
 
-impl<T1, T2> Unpin for Join<'_, T1, T2> {}
+impl<T1, T2, F1: Future<Output = T1>, F2: Future<Output = T2>> Unpin for Join<'_, T1, T2, F1, F2> {}
 
-impl<T1, T2> Future for Join<'_, T1, T2> {
+impl<T1, T2, F1: Future<Output = T1>, F2: Future<Output = T2>> Future for Join<'_, T1, T2, F1, F2> {
     type Output = (T1, T2);
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
